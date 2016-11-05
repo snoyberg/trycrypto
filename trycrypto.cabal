@@ -21,7 +21,7 @@ library
                      Settings.StaticFiles
                      Handler.Common
                      Handler.Home
-                     Handler.Comment
+                     Handler.OneTimePad
 
     if flag(dev) || flag(library-only)
         cpp-options:   -DDEVELOPMENT
