@@ -8,6 +8,7 @@ import Yesod.Default.Util          (addStaticContentExternal)
 import qualified Yesod.Core.Unsafe as Unsafe
 import qualified Data.CaseInsensitive as CI
 import qualified Data.Text.Encoding as TE
+import System.Random.MWC (GenIO)
 
 -- | The foundation datatype for your application. This can be a good place to
 -- keep settings and values requiring initialization before your application
@@ -18,6 +19,7 @@ data App = App
     , appStatic      :: Static -- ^ Settings for static file serving.
     , appHttpManager :: Manager
     , appLogger      :: Logger
+    , appGen         :: GenIO
     }
 
 data MenuItem = MenuItem
@@ -52,16 +54,11 @@ type Form x = Html -> MForm (HandlerT App IO) (FormResult x, Widget)
 instance Yesod App where
     -- Controls the base of generated URLs. For more information on modifying,
     -- see: https://github.com/yesodweb/yesod/wiki/Overriding-approot
-    approot = ApprootRequest $ \app req ->
-        case appRoot $ appSettings app of
-            Nothing -> getApprootText guessApproot app req
-            Just root -> root
+    approot = guessApproot
 
     -- Store session data on the client in encrypted cookies,
     -- default session idle timeout is 120 minutes
-    makeSessionBackend _ = Just <$> defaultClientSessionBackend
-        120    -- timeout in minutes
-        "config/client_session_key.aes"
+    makeSessionBackend _ = return Nothing
 
     -- Yesod Middleware allows you to run code before and after each handler function.
     -- The defaultYesodMiddleware adds the response header "Vary: Accept, Accept-Language" and performs authorization checks.
@@ -74,18 +71,19 @@ instance Yesod App where
 
     defaultLayout widget = do
         master <- getYesod
-        mmsg <- getMessage
 
         mcurrentRoute <- getCurrentRoute
-
-        -- Get the breadcrumbs, as defined in the YesodBreadcrumbs instance.
-        (title, parents) <- breadcrumbs
 
         -- Define the menu items of the header.
         let menuItems =
                 [ NavbarLeft $ MenuItem
                     { menuItemLabel = "Home"
                     , menuItemRoute = HomeR
+                    , menuItemAccessCallback = True
+                    }
+                , NavbarLeft $ MenuItem
+                    { menuItemLabel = "One Time Pad"
+                    , menuItemRoute = OneTimePadR
                     , menuItemAccessCallback = True
                     }
                 ]
@@ -106,12 +104,6 @@ instance Yesod App where
             addStylesheet $ StaticR css_bootstrap_css
             $(widgetFile "default-layout")
         withUrlRenderer $(hamletFile "templates/default-layout-wrapper.hamlet")
-
-    -- Routes not requiring authenitcation.
-    isAuthorized FaviconR _ = return Authorized
-    isAuthorized RobotsR _ = return Authorized
-    -- Default to Authorized for now.
-    isAuthorized _ _ = return Authorized
 
     -- This function creates static content files in the static folder
     -- and names them based on a hash of their content. This allows
@@ -140,11 +132,6 @@ instance Yesod App where
             || level == LevelError
 
     makeLogger = return . appLogger
-
--- Define breadcrumbs.
-instance YesodBreadcrumbs App where
-  breadcrumb HomeR = return ("Home", Nothing)
-  breadcrumb  _ = return ("home", Nothing)
 
 -- This instance is required to use forms. You can modify renderMessage to
 -- achieve customized and internationalized form validation messages.
